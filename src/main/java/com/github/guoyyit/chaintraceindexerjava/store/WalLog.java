@@ -61,10 +61,36 @@ public final class WalLog implements AutoCloseable {
                 activePath = directory.resolve(segmentName(0));
                 writeManifest();
             }
+            cleanupOrphanedFiles();
             truncatePartialTails();
             openActiveSegment();
         } catch (IOException ex) {
             throw new UncheckedIOException("failed to open WAL at " + directory, ex);
+        }
+    }
+
+    /**
+     * Removes files left behind by a crashed compaction or segment roll:
+     * temporary files and segment files outside the committed range
+     * {@code [firstSegment, nextSegment)}. The manifest is the single commit
+     * point, so any segment it does not reference is unreferenced garbage.
+     */
+    private void cleanupOrphanedFiles() throws IOException {
+        try (var stream = Files.list(directory)) {
+            for (Path path : stream.toList()) {
+                String name = path.getFileName().toString();
+                if (name.endsWith(".tmp")) {
+                    Files.deleteIfExists(path);
+                    continue;
+                }
+                if (name.startsWith(SEGMENT_PREFIX) && name.endsWith(SEGMENT_SUFFIX)) {
+                    int index = Integer.parseInt(name.substring(SEGMENT_PREFIX.length(),
+                            name.length() - SEGMENT_SUFFIX.length()));
+                    if (index < firstSegment || index >= nextSegment) {
+                        Files.deleteIfExists(path);
+                    }
+                }
+            }
         }
     }
 
@@ -208,6 +234,7 @@ public final class WalLog implements AutoCloseable {
     public synchronized void compactTo(List<LogRecord> retained) {
         try {
             activeOutput.flush();
+            activeChannel.force(false);
             activeOutput.close();
             int newSegment = nextSegment;
             Path temp = directory.resolve("compact-" + System.nanoTime() + ".tmp");
@@ -221,18 +248,28 @@ public final class WalLog implements AutoCloseable {
                     written += frame.length;
                 }
                 output.flush();
+                try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.WRITE)) {
+                    channel.force(true);
+                }
             }
             Path target = directory.resolve(segmentName(newSegment));
             Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            deleteSegmentsBefore(newSegment);
+            fsyncDirectory();
+            // The manifest update is the atomic commit point. Only after it is
+            // durable do we drop the old segments; a crash in any earlier window
+            // leaves the manifest pointing at intact old segments.
             firstSegment = newSegment;
             nextSegment = newSegment + 1;
+            writeManifest();
+            // Reopen the active segment on the compacted file.
             activePath = target;
             activeSize = written;
             activeChannel = FileChannel.open(target,
                     StandardOpenOption.WRITE, StandardOpenOption.APPEND);
             activeOutput = new BufferedOutputStream(java.nio.channels.Channels.newOutputStream(activeChannel));
-            writeManifest();
+            // Old segments are now unreferenced; safe to delete after commit.
+            deleteSegmentsBefore(newSegment);
+            fsyncDirectory();
         } catch (IOException ex) {
             throw new UncheckedIOException("failed to compact WAL", ex);
         }
@@ -262,9 +299,23 @@ public final class WalLog implements AutoCloseable {
                         StandardOpenOption.WRITE)))) {
             output.writeBytes(Integer.toString(firstSegment) + System.lineSeparator());
             output.writeBytes(Integer.toString(nextSegment) + System.lineSeparator());
+            output.flush();
+        }
+        try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.WRITE)) {
+            channel.force(true);
         }
         Files.move(temp, directory.resolve(MANIFEST),
                 StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        fsyncDirectory();
+    }
+
+    private void fsyncDirectory() throws IOException {
+        try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+            channel.force(true);
+        } catch (IOException ex) {
+            // Some platforms do not support fsync on a directory handle; the
+            // atomic move plus file fsync still provides the ordering guarantee.
+        }
     }
 
     static byte[] encode(LogRecord record) {

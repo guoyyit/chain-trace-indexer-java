@@ -252,16 +252,27 @@ public final class ChainIndexer implements AutoCloseable {
                         continue;
                     }
                     for (StateChange change : tx.changes()) {
-                        if (change.newValue() == null) {
-                            continue;
-                        }
                         switch (change.type()) {
-                            case BALANCE -> worldState.putBalance(change.address(),
-                                    Long.parseLong(change.newValue()));
-                            case NONCE -> worldState.putNonce(change.address(),
-                                    Long.parseLong(change.newValue()));
-                            case STORAGE -> worldState.putStorage(change.address(),
-                                    change.key(), change.newValue());
+                            case BALANCE -> {
+                                if (change.newValue() != null) {
+                                    worldState.putBalance(change.address(),
+                                            Long.parseLong(change.newValue()));
+                                }
+                            }
+                            case NONCE -> {
+                                if (change.newValue() != null) {
+                                    worldState.putNonce(change.address(),
+                                            Long.parseLong(change.newValue()));
+                                }
+                            }
+                            case STORAGE -> {
+                                if (change.newValue() == null) {
+                                    worldState.removeStorage(change.address(), change.key());
+                                } else {
+                                    worldState.putStorage(change.address(),
+                                            change.key(), change.newValue());
+                                }
+                            }
                         }
                     }
                 }

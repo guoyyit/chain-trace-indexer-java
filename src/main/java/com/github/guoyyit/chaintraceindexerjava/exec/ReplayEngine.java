@@ -54,11 +54,11 @@ public final class ReplayEngine {
 
     public TransactionResult executeTransaction(RawTransaction transaction) {
         int before = worldState.checkpoint();
-        worldState.incrementNonce(transaction.from(), 0);
-        worldState.transfer(transaction.from(), "0x0", transaction.value(), 0);
         List<CallFrame> children = new ArrayList<>();
         String failure = null;
         try {
+            worldState.incrementNonce(transaction.from(), 0);
+            worldState.transfer(transaction.from(), "0x0", transaction.value(), 0);
             for (Instruction instruction : InstructionParser.parse(transaction.instructions())) {
                 FrameOutcome outcome = executeInstruction(instruction, transaction.from(), 1);
                 if (outcome.frame() != null) {

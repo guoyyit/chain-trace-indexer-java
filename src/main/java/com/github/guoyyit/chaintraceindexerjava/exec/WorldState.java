@@ -117,6 +117,21 @@ public final class WorldState {
         }
     }
 
+    /**
+     * Silently removes a storage key without emitting a change. Used when
+     * reconstructing world state from the index, where changes are already
+     * recorded and must not be re-emitted.
+     */
+    public void removeStorage(String address, String key) {
+        Map<String, String> accountStorage = storage.get(address);
+        if (accountStorage != null) {
+            accountStorage.remove(key);
+            if (accountStorage.isEmpty()) {
+                storage.remove(address);
+            }
+        }
+    }
+
     public List<StateChange> drainChanges() {
         List<StateChange> result = List.copyOf(emitted);
         emitted.clear();

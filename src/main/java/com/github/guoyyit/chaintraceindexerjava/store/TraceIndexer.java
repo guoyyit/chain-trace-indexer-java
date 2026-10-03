@@ -204,7 +204,9 @@ public final class TraceIndexer {
             Snapshot.TxRef txRef = new Snapshot.TxRef(block.height(), txIndex, tx.hash());
             txByHash.computeIfAbsent(tx.hash(), ignored -> new ArrayList<>()).add(txRef);
             Set<String> touched = new HashSet<>();
-            collectFrameAddresses(tx.trace(), touched);
+            if (tx.trace() != null) {
+                collectFrameAddresses(tx.trace(), touched);
+            }
             for (String address : touched) {
                 txByAddress.computeIfAbsent(address, ignored -> new ArrayList<>()).add(txRef);
             }
@@ -238,7 +240,9 @@ public final class TraceIndexer {
             txByHash.computeIfAbsent(tx.hash(), ignored -> new ArrayList<>()).add(txRef);
             Set<String> addresses = new HashSet<>();
             addresses.add(tx.from());
-            collectFrameAddresses(tx.trace(), addresses);
+            if (tx.trace() != null) {
+                collectFrameAddresses(tx.trace(), addresses);
+            }
             for (String address : addresses) {
                 txByAddress.computeIfAbsent(address, ignored -> new ArrayList<>()).add(txRef);
             }
