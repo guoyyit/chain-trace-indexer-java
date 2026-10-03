@@ -204,7 +204,9 @@ public final class TraceIndexer {
             Snapshot.TxRef txRef = new Snapshot.TxRef(block.height(), txIndex, tx.hash());
             txByHash.computeIfAbsent(tx.hash(), ignored -> new ArrayList<>()).add(txRef);
             Set<String> touched = new HashSet<>();
-            collectFrameAddresses(tx.trace(), touched);
+            if (tx.trace() != null) {
+                collectFrameAddresses(tx.trace(), touched);
+            }
             for (String address : touched) {
                 txByAddress.computeIfAbsent(address, ignored -> new ArrayList<>()).add(txRef);
             }
@@ -230,6 +232,7 @@ public final class TraceIndexer {
                                     Map<String, List<Snapshot.TxRef>> txByAddress,
                                     Map<String, List<Snapshot.ChangeRef>> changesByTxHash,
                                     Map<String, List<Snapshot.ChangeRef>> changesByAddress) {
+        BlockResult block = archiveStore.readBlock(handle);
         for (ArchivedMarker.Tx tx : handle.txs()) {
             if (!tx.applied()) {
                 continue;
@@ -238,11 +241,12 @@ public final class TraceIndexer {
             txByHash.computeIfAbsent(tx.hash(), ignored -> new ArrayList<>()).add(txRef);
             Set<String> addresses = new HashSet<>();
             addresses.add(tx.from());
-            collectFrameAddresses(tx.trace(), addresses);
+            if (tx.trace() != null) {
+                collectFrameAddresses(tx.trace(), addresses);
+            }
             for (String address : addresses) {
                 txByAddress.computeIfAbsent(address, ignored -> new ArrayList<>()).add(txRef);
             }
-            BlockResult block = archiveStore.readBlock(handle);
             TransactionResult txResult = block.transactions().get(tx.index());
             List<Snapshot.ChangeRef> txChanges =
                     changesByTxHash.computeIfAbsent(tx.hash(), ignored -> new ArrayList<>());

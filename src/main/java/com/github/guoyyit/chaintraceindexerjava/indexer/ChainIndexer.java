@@ -327,6 +327,14 @@ public final class ChainIndexer implements AutoCloseable {
         return wal;
     }
 
+    /**
+     * Forces a WAL compaction (rewrite of the surviving committed/undone/archived
+     * records) regardless of the size threshold. Primarily used by recovery tests.
+     */
+    public synchronized void forceCompaction() {
+        wal.compactTo(wal.readAll());
+    }
+
     public synchronized long tipHeight() {
         return traceIndexer.tipHeight();
     }
